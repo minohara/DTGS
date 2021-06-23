@@ -6,6 +6,7 @@ public class Client {
   public ArrayList<String> cards;
   String n = "3456789TJQKA2";
   char name;
+
   public Client(int num) {
     cards = new ArrayList<>();
     name = (char)('A'+num);
@@ -13,6 +14,7 @@ public class Client {
 
   String turn( String top_card ) {
     System.out.println( name + "さんの番です。手持ちのカードは");
+    // 手持ちのカードを表示
     for(int j = 0; j < cards.size();j++) {
       System.out.print( cards.get(j) + ",");
     }

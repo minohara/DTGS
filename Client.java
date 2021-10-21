@@ -1,8 +1,17 @@
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.AsynchronousSocketChannel;
+import java.nio.channels.CompletionHandler;
+import java.nio.charset.Charset;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Random;
+import java.util.List;
+import java.util.Queue;
 import java.util.Scanner;
-import java.io.*;
-import java.net.*;
 
 public class Client {
   BufferedReader in;
@@ -11,63 +20,151 @@ public class Client {
   PrintWriter out2;
   char name;
 
-
   public ArrayList<String> cards;
   String n = "3456789TJQKA2";
+  ByteBuffer buff = ByteBuffer.allocate(1024) ;
+  List<String> list = new ArrayList<>();
 
+
+  AsynchronousSocketChannel s = AsynchronousSocketChannel.open();
   public Client(String server, int port,String server2, int port2) throws Exception {
-    Socket s = new Socket(server, port);
-    Socket s2 = new Socket(server2, port2);
-    in = new BufferedReader(new InputStreamReader( s.getInputStream()));
-    in2 = new BufferedReader(new InputStreamReader( s2.getInputStream()));
-    out = new PrintWriter(s.getOutputStream(),true /* autoFlush */);
-    out2 = new PrintWriter(s2.getOutputStream(),true /* autoFlush */);
+
+
+
+
+	s.connect(new InetSocketAddress(server, port), null, new CompletionHandler<Void, Void>() {
+
+		@Override
+		public void completed(Void result2, Void attachment2) {
+			s.read(buff, null, new CompletionHandler<Integer, ByteBuffer>() {
+		        @Override
+		        public void completed(Integer result, ByteBuffer attachment) {
+		            System.out.println("CLIENT: read "+result);
+
+
+
+		           System.out.println("CLIENT: done "+buff.limit() + ":::"+ buff.capacity()+ ":::"+ buff.position() );
+		           buff.flip();
+		           list.add(Charset.forName("UTF-8").decode(buff).toString());
+		           System.out.println(list);
+		           buff.clear();
+		           //System.out.println(list);
+		            if(buff.hasRemaining()){
+		                s.read(buff, null, this);
+		                return;
+		            }
+		            
+		            
+
+		        }
+				@Override
+				public void failed(Throwable exc, ByteBuffer attachment) {
+					// TODO 自動生成されたメソッド・スタブ
+
+				}
+
+		});
+		}
+		@Override
+		public void failed(Throwable exc, Void attachment) {
+			// TODO 自動生成されたメソッド・スタブ
+
+		}
+
+	});
+	AsynchronousSocketChannel s2 = AsynchronousSocketChannel.open();
+	s2.connect(new InetSocketAddress(server2, port2)).get();
+
     cards = new ArrayList<String>();
-    while ( true ) {
-      String str = in.readLine();
-      //System.out.println(str);
-      in2.readLine();
-      //System.out.println("2" + str2);
-      String[] cmd = str.split("\s");
-      if ( cmd[0].equals("CN") ) {
-        name = cmd[1].charAt(0);
-        System.out.format("あなたは %c です\n", name);
-      }
-      else if ( cmd[0].equals("DC") ) {
-        cards.add(cmd[1]);
-        System.out.format("%s ", cmd[1]);
-      }
-      else if ( cmd[0].equals("SF") ) {
-        System.out.format("%s さんが親です\n", cmd[1]);
-      }
-      else if ( cmd[0].equals("TN") ) {
-        if (cmd.length == 1) {
-          turn("");
-        }
-        else {
-          turn(cmd[1]);
-        }
-      }
-      else if ( cmd[0].equals("WN") ) {
-        System.out.format("%s さんの勝ちです\n", cmd[1]);
-        s.close();
-        s2.close();
-        break;
-      }
-      else {
+	ByteBuffer buff2 = null;
+
+	String str = null;
+
+
+    while (true) {
+
+    	Thread.sleep(1);
+	    //System.out.println(str);
+	    //try {
+    	//try {
+
+    	//}catch (NullPointerException e) {
+    	//	try {
+    	//		Thread.sleep(10000); // 10秒(1万ミリ秒)間だけ処理を止める
+    	//	} catch (InterruptedException e2) {
+    	//	}
+
+    	//}
+	    //}catch (SocketException e) {
+	    //	System.out.println(e);
+	    //}
+	   // try {
+	    //	s.read(buff).get(9000, TimeUnit.SECONDS);
+	    //}catch (SocketException e) {
+	    //	buff = buff2;
+	    //	System.out.println(e);
+	    //}
+	    //System.out.println("2" + str2);
+    	
+    	if(list.size() != 0) {
+    		
+	    str =  list.get(0);
+	    String[] cmd = str.split("\s");
+	    if ( cmd[0].equals("CN") ) {
+	    	name = cmd[1].charAt(0);
+	    	System.out.println(str );
+	        System.out.format("あなたは %c です\n", name);
+	    }
+	    else if ( cmd[0].equals("DC") ) {
+	    	
+	        cards.add(cmd[1]);
+	        System.out.format("%s ", cmd[1]);
+	    }
+	    else if ( cmd[0].equals("SF") ) {
+	    	System.out.println();
+	    	System.out.println(str + " : " );
+	        System.out.format("%s さんが親です\n", cmd[1]);
+	    }
+	    else if ( cmd[0].equals("TN") ) {
+	    	System.out.println(str + " : ");
+	        if (cmd.length == 1) {
+	        	turn("");
+	        }
+	        else {
+	        	turn(cmd[1]);
+	        }
+	    }
+	    else if ( cmd[0].equals("WN") ) {
+	      	System.out.println(str + " : ");
+	        System.out.format("%s さんの勝ちです\n", cmd[1]);
+	        s.close();
+	        s2.close();
+	        break;
+	    }
+	    else {
         System.out.println(str);
-      }
+
+	    }
+	    list.remove(0);
     }
+    }
+
+
   }
 
-  void play(String card) {
+
+
+
+void play(String card) {
     if ( card.equals("0") ) {
-      out.format("PC\n");
-      out2.format("PC\n");
+    	//s.write(ByteBuffer.allocate(32).put(String.format("PC\n").getBytes("UTF-8")));
+		ByteBuffer buff = Charset.forName("UTF-8").encode(String.format("PC\n"));
+		s.write(buff);
     }
     else {
-      out.format("PC %s\n", card);
-      out2.format("PC %s\n", card);
+    	//s.write(ByteBuffer.allocate(32).put(String.format("PC %s\n", card).getBytes("UTF-8")));
+		ByteBuffer buff = Charset.forName("UTF-8").encode(String.format("PC %s\n", card));
+		s.write(buff);
     }
   }
 

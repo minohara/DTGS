@@ -2,6 +2,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.channels.AsynchronousByteChannel;
 import java.nio.channels.AsynchronousChannel;
 import java.nio.channels.AsynchronousServerSocketChannel;
@@ -9,6 +10,7 @@ import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.channels.InterruptedByTimeoutException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -19,13 +21,14 @@ import java.util.function.BiConsumer;
 
 public class Server {
 	ByteBuffer buff = ByteBuffer.allocate(1024) ;
+	ByteBuffer in = ByteBuffer.allocate(1024) ;
 
 	AsynchronousSocketChannel peerServer; // 別のサーバとの通信チャネル
 	static final int waitPeer = 10000; // 別のサーバの起動を待つ時間
 
 	class Player {
 		ByteBuffer buff = ByteBuffer.allocate(1024) ;
-		BufferedReader in;
+		//BufferedReader in;
 		AsynchronousSocketChannel ch;
 		char name;
 		int nHands;
@@ -45,6 +48,9 @@ public class Server {
 			public void failed(Throwable exc, Void attachment) {
 			}
 		};
+
+
+
 		void sendMessage(String msg) {
 			Thread th = Thread.currentThread();
 			ByteBuffer buff = ByteBuffer.allocate(1024);
@@ -127,6 +133,30 @@ public class Server {
 			ch.close();
 		}
 	};
+	CompletionHandler<Integer, Integer> readCommandHander
+	  = new CompletionHandler<Integer, Integer>() {
+	    @Override
+	    public void completed(Integer nData, Integer attachment) {
+
+	      int sid = attachment.intValue();
+	      int l = StandardCharsets.UTF_8.decode(in).toString().length();
+	      in.flip();
+	      while (in.hasRemaining()) {
+
+
+	        //System.out.format("CMD:%s\n", new String(msg, Charset.forName("UTF-8")));get
+	    		list.add(StandardCharsets.UTF_8.decode(in).toString().substring(0,l));
+
+	      }
+	      in.clear();
+	       // mainThread.interrupt();
+
+	    }
+	    @Override
+	    public void failed(Throwable exc, Integer attachment) {
+
+	    }
+	  };
 
 	int num = 0;
 	List<String> list = new ArrayList<>();
@@ -152,10 +182,13 @@ public class Server {
 			System.out.println( "skip_count:"+skip_count);
 			int pid = turn % 3;
 			players[pid].sendMessage( String.format("TN %s", top_card) );
+			players[pid].ch.read(in, pid,readCommandHander);
 			String[] cmd = players[pid].recvMessage(players[pid]).split("\s");
-			if ( cmd[0].equals("PC") ) {
+
+			if ( cmd[0].startsWith("PC") ) {
 				if ( cmd.length == 1 ) {
 					skip_count++;
+
 				}
 				else {
 					top_card = cmd[1];
@@ -172,7 +205,7 @@ public class Server {
 				for (int i = 0; i < 3; i++ ) {
 					players[i].sendMessage(String.format("WN %c", 'A'+pid));
 				}
-				break;
+				System.exit(1);
 			}
 
 		}

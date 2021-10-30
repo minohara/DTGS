@@ -8,12 +8,15 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
+import java.nio.channels.ReadPendingException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.Scanner;
+import java.util.regex.Pattern;
 
 public class Client {
   char name;
@@ -21,6 +24,7 @@ public class Client {
   public ArrayList<String> cards;
   final String n = "3456789TJQKA2";
   final int timeOut = 10000;
+
   ByteBuffer[] buff = new ByteBuffer[2];
   String[] rmsg = new String[2];
   @SuppressWarnings("unchecked")
@@ -31,9 +35,10 @@ public class Client {
   String myName;
   Thread mainThread;
   int[] status = new int[2];
+  boolean[] reading = {false,false}; 
 
   // 接続処理のハンドラ
-  CompletionHandler<Void, Integer> connectHander = new CompletionHandler<Void, Integer>() {
+  CompletionHandler<Void, Integer> connectHandler = new CompletionHandler<Void, Integer>() {
     @Override
     public void completed(Void result, Integer attachment) {
       // 接続が完了したら サーバ番号を表示
@@ -57,13 +62,17 @@ public class Client {
   };
 
   // コマンド読み込み処理のハンドラ
-  CompletionHandler<Integer, Integer> readCommandHander
+  CompletionHandler<Integer, Integer> readCommandHandler
   = new CompletionHandler<Integer, Integer>() {
     @Override
     public void completed(Integer nData, Integer attachment) {
+
       int sid = attachment.intValue();
+      reading[sid] = false;
       buff[sid].flip();
+      //System.out.println(StandardCharsets.UTF_8.decode(buff[sid]));
       while (buff[sid].hasRemaining()) {
+
         int length = buff[sid].getInt();
         byte[] msg = new byte[1024];
         buff[sid].get(msg, 0, length);
@@ -72,12 +81,14 @@ public class Client {
       }
       buff[sid].clear();
       nRead += 1; // 読み込みサーバ数をカウントアップ
+      System.out.println(nRead);
       if (nRead >= 2) {
         mainThread.interrupt();
       }
     }
     @Override
     public void failed(Throwable exc, Integer attachment) {
+
     }
   };
 
@@ -86,12 +97,13 @@ public class Client {
     cards = new ArrayList<String>();
     for (int i = 0; i < 2; i++ ) {
       s[i] = AsynchronousSocketChannel.open(); // サーバ iのチャネルをオープンして接続する
-      s[i].connect(new InetSocketAddress(servers[i], ports[i]), Integer.valueOf(i), connectHander);
+      s[i].connect(new InetSocketAddress(servers[i], ports[i]), Integer.valueOf(i), connectHandler);
     }
     try {
       mainThread.sleep(timeOut); // 接続完了を大気する
     }
     catch ( InterruptedException e ) {
+
     }
     Thread.interrupted();
     for (int i = 0; i < 2; i++) {
@@ -104,47 +116,101 @@ public class Client {
   public synchronized void getCommand() {
     mainThread = Thread.currentThread();
     nRead = 0;
+
     for (int i = 0; i < 2; i++ ) {
       if (cmdLists[i] != null && cmdLists[i].isEmpty()) {
-        if (status[i] > 0) {
+        if (!reading[i] && status[i] > 0) {
           System.out.println("Reading command ...");
-          s[i].read(buff[i], Integer.valueOf(i), readCommandHander);
+          reading[i] = true;
+          s[i].read(buff[i], Integer.valueOf(i), readCommandHandler);
         }
       }
       else {
         nRead++;
       }
     }
-    if ( nRead == 0) {
+    if (nRead == 0) {
       try {
+
         mainThread.sleep(timeOut);
       }
       catch ( InterruptedException e ) {
+
       }
       Thread.interrupted();
     }
-    for (int i = 0; i < 2; i++ ) {
-      if (status[i] >= 1 && cmdLists[i] != null && !cmdLists[i].isEmpty()
-        && cmdLists[i].get(0).startsWith("CN ")) {
+    String str = Cmd();
+      if (status[0] >= 1 && str != null && !str.isEmpty()
+        && str.startsWith("CN ")) {
         if ( myName != null ) {
-          if ( !myName.equals(cmdLists[i].get(0).substring(3)) ) {
+          if ( !myName.equals(str.substring(3)) ) {
             System.err.println("Name mismatch!!\n");
             System.exit(1);
           }
         }
         else {
-          myName = cmdLists[i].get(0).substring(3);
+          myName = str.substring(3,4);
         }
-        status[i]++;
-        System.out.format("%d MyName is %s\n", i, myName );
-        cmdLists[i].remove(0);
+        status[0]++;
+        status[1]++;
+        System.out.format("あなたは %s です\n", myName);
+        //System.out.format("%d MyName is %s\n", i, myName );
+        //cmdLists[i].remove(0);
       }
-      else if (status[i] >= 2 && cmdLists[i] != null && !cmdLists[i].isEmpty()
-       && cmdLists[i].get(0).startsWith("DC ")) {
-        System.out.println(cmdLists[i].get(0));
-        cmdLists[i].remove(0);
+      else if (status[0] >= 2 && str != null && !str.isEmpty()
+       && str.startsWith("DC ")) {
+        cards.add(str.substring(6,8));
+        //cmdLists[i].remove(0);
+      }else if(status[0] >= 2 && str != null && !str.isEmpty()
+    	       && str.startsWith("SF ")) {
+    	System.out.format("%s さんが親です\n", str.substring(3,4));
+    	//cmdLists[i].remove(0);
+      }else if(status[0] >= 2 && str != null && !str.isEmpty()
+   	       && str.startsWith("TN ")) {
+		  if(str.contains("S")||str.contains("H") || str.contains("D") || str.contains("C")) {
+			  turn(str.substring(3,5));
+		  }else {
+			  turn("");
+		  }
+
+      }else if(status[0] >= 2 && str != null && !str.isEmpty()
+   	       && str.startsWith("WN ")) {
+    	  System.out.format("%s さんの勝ちです\n", str.substring(3,4));
+    	  try {
+			s[0].close();
+		} catch (IOException e) {
+			// TODO 自動生成された catch ブロック
+			e.printStackTrace();
+		}
+    	  try {
+			s[1].close();
+		} catch (IOException e) {
+			// TODO 自動生成された catch ブロック
+			e.printStackTrace();
+		}
+    	  System.exit(1);
       }
-    }
+     }
+
+
+
+  public String Cmd() {
+	  if(cmdLists[0].size() != 0 && cmdLists[1].size() != 0) {
+		  if(cmdLists[0].get(0).equals(cmdLists[1].get(0))) {
+			  String s = cmdLists[0].get(0);
+			  cmdLists[0].remove(0);
+			  cmdLists[1].remove(0);
+			  return s;
+		  }else {//二つのサーバの通信内容が違った場合
+			  //System.err.println("mismatch!!\n");
+
+		  }
+	  }else {
+		  //タイムアウト処理
+	  }
+
+	  return null;
+
   }
 /*
 @Override
@@ -198,23 +264,25 @@ list.remove(0);
 }
 }
 */
-/*
+
 void play(String card) {
 if ( card.equals("0") ) {
 //s.write(ByteBuffer.allocate(32).put(String.format("PC\n").getBytes("UTF-8")));
 ByteBuffer buff = Charset.forName("UTF-8").encode(String.format("PC\n"));
-s.write(buff);
+s[0].write(buff);
+s[1].write(buff);
 }
 else {
 //s.write(ByteBuffer.allocate(32).put(String.format("PC %s\n", card).getBytes("UTF-8")));
 ByteBuffer buff = Charset.forName("UTF-8").encode(String.format("PC %s\n", card));
-s.write(buff);
+s[0].write(buff);
+s[1].write(buff);
 }
 }
-*/
-/*
+
+
 void turn( String top_card ) {
-System.out.println( name + "さんの番です。手持ちのカードは");
+System.out.println( myName + "さんの番です。手持ちのカードは");
 // 手持ちのカードを表示
 for(int j = 0; j < cards.size();j++) {
 System.out.print( cards.get(j) + ",");
@@ -245,7 +313,7 @@ return;
 }
 }
 
-*/
+
 
   public void message(String msg) {
     System.out.println( name + ">" + msg );
@@ -266,8 +334,13 @@ return;
     Client client = new Client(servers, ports);
     while (true) {
       client.getCommand();
+      try {
       Thread.sleep(100);
     }
+  catch ( InterruptedException e ) {
+  }
+  Thread.interrupted();
+  }
     /*
     synchronized(client) {
       client.wait();
